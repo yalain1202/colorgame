@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水彩混色遊戲 (Watercolor Mixing Game)</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 使用 Inter 字體 */
+        body {
+            font-family: 'Inter', sans-serif;
+            /* 為點擊效果增加流暢過渡 */
+            transition: all 0.2s ease-in-out;
+        }
+        /* 顏色方塊的基本樣式 */
+        .color-box {
+            width: 100px;
+            height: 100px;
+            border-radius: 0.75rem; /* rounded-xl */
+            border: 4px solid #f3f4f6; /* border-gray-100 */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 600; /* font-semibold */
+            color: rgba(0,0,0,0.4);
+        }
+        /* 調色盤按鈕 */
+        .palette-btn {
+            width: 72px; /* w-18 */
+            height: 72px; /* h-18 */
+            border-radius: 50%; /* rounded-full */
+            border: 4px solid white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .palette-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.2);
+        }
+        /* 白色按鈕的特殊邊框 */
+        .border-gray-light {
+            border: 4px solid #e5e7eb; /* border-gray-200 */
+        }
+        .palette-btn.selected {
+            transform: scale(0.9);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            opacity: 0.6;
+        }
+
+        /* --- 1. 新增：錯誤抖動動畫 --- */
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+          20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .shake-animation {
+          animation: shake 0.5s ease-in-out;
+        }
+
+        /* --- 2. 新增：顏色表格樣式 --- */
+        .grid-color-item {
+            width: 100%;
+            /* 1:1 比例的方形 */
+            padding-bottom: 100%; 
+            position: relative;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 2px solid rgba(255,255,255,0.5);
+        }
+        .grid-color-item .checkmark {
+            display: none; /* 預設隱藏 */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.5rem; /* 放大打勾符號 */
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        .grid-color-item.completed .checkmark {
+            display: block; /* 完成時顯示 */
+        }
+    </style>
+</head>
+<body class="bg-blue-50 flex items-center justify-center min-h-screen p-4">
+
+    <!-- 
+      (版面修改)
+      遊戲主容器，改為 grid 佈局 
+      - max-w-lg (窄) 改為 max-w-6xl (寬)
+      - 新增 lg:grid lg:grid-cols-3 lg:gap-8 
+    -->
+    <div id="game-container" class="w-full max-w-6xl mx-auto p-6 md:p-8 bg-white rounded-2xl shadow-2xl lg:grid lg:grid-cols-3 lg:gap-8">
+        
+        <!-- (版面修改) 左欄：顏色表格 -->
+        <div class="lg:col-span-1 mb-8 lg:mb-0">
+            <!-- --- 3. 5x5 顏色表格 --- -->
+            <p class="text-center font-semibold text-gray-600 mb-4 text-2xl">我的顏色表</p>
+            <div id="color-grid" class="grid grid-cols-5 gap-2 p-4 bg-gray-100 rounded-lg">
+                <!-- 25 個顏色格子將由 JS 動態生成 -->
+            </div>
+        </div>
+
+        <!-- (版面修改) 右欄：遊戲主要內容 -->
+        <div class="lg:col-span-2">
+            
+            <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">
+                水彩混色遊戲
+            </h1>
+            
+            <p class="text-xl text-center text-gray-700 mb-6">
+                請混合出： 
+                <span id="target-name" class="font-bold text-blue-600">...</span>
+            </p>
+
+            <!-- 顏色顯示區 -->
+            <div class="mb-8">
+                <!-- 目標 -->
+                <div class="flex flex-col items-center mb-6">
+                    <p class="mt-2 text-lg font-semibold text-gray-600 mb-2">目標顏色</p>
+                    <div id="target-color" class="color-box w-32 h-32 md:w-36 md:h-36" style="background-color: #eee;"></div>
+                </div>
+
+                <!-- 混合區 -->
+                <div class="flex items-center justify-center space-x-2 md:space-x-4">
+                    <div id="mix-slot-1" class="color-box">顏色1</div>
+                    <span class="text-3xl font-light text-gray-500">+</span>
+                    <div id="mix-slot-2" class="color-box">顏色2</div>
+                    <span class="text-3xl font-light text-gray-500">=</span>
+                    <div id="mixed-color" class="color-box">結果</div>
+                </div>
+            </div>
+
+            <!-- 調色盤 -->
+            <div class="mb-8">
+                <p class="text-center font-semibold text-gray-600 mb-4">選擇兩種顏色</p>
+                <div id="palette-container" class="flex justify-center flex-wrap gap-4">
+                    <!-- 調色盤按鈕將由 JS 動態生成 -->
+                </div>
+            </div>
+
+
+            <!-- (修改) 刪除按鈕區 -->
+
+
+            <!-- 回饋訊息 -->
+            <p id="feedback" class="text-center text-lg font-medium mt-6 h-8"></p>
+        
+        </div> <!-- 結束右欄 -->
+
+    </div>
+
+    <script>
+        // --- 1. 定義顏色 (重構) ---
+        
+        // 25 種顏色的主資料庫
+        const allColorsData = {
+            // 基礎調色盤 (8)
+            "Red":    { zh: "紅色", css: "rgb(239, 68, 68)", recipe: null },
+            "Yellow": { zh: "黃色", css: "rgb(234, 179, 8)", recipe: null },
+            "Blue":   { zh: "藍色", css: "rgb(59, 130, 246)", recipe: null },
+            "White":  { zh: "白色", css: "rgb(255, 255, 255)", recipe: null, border: true },
+            "Black":  { zh: "黑色", css: "rgb(17, 24, 39)", recipe: null },
+            "Orange": { zh: "橘色", css: "rgb(249, 115, 22)", recipe: ["Red", "Yellow"] },
+            "Green":  { zh: "綠色", css: "rgb(34, 197, 94)", recipe: ["Blue", "Yellow"] },
+            "Purple": { zh: "紫色", css: "rgb(139, 92, 246)", recipe: ["Red", "Blue"] },
+            
+            // 目標顏色 (17)
+            "Pink":   { zh: "粉紅色", css: "rgb(244, 114, 182)", recipe: ["Red", "White"] },
+            "Gray":   { zh: "灰色", css: "rgb(156, 163, 175)", recipe: ["Black", "White"] },
+            "Light Blue": { zh: "淺藍色", css: "rgb(147, 197, 253)", recipe: ["Blue", "White"] },
+            "Light Yellow": { zh: "淺黃色", css: "rgb(254, 240, 138)", recipe: ["Yellow", "White"] },
+            "Maroon": { zh: "栗色", css: "rgb(159, 18, 57)", recipe: ["Red", "Black"] },
+            "Navy":   { zh: "深藍色", css: "rgb(30, 58, 138)", recipe: ["Blue", "Black"] },
+            "Olive":  { zh: "橄欖綠", css: "rgb(101, 116, 32)", recipe: ["Yellow", "Black"] }, // lime-700
+            "Vermilion": { zh: "朱紅色", css: "rgb(249, 115, 22)", recipe: ["Red", "Orange"] }, // orange-500
+            "Amber":  { zh: "琥珀色", css: "rgb(245, 158, 11)", recipe: ["Yellow", "Orange"] }, // amber-500
+            "Chartreuse": { zh: "黃綠色", css: "rgb(132, 204, 22)", recipe: ["Yellow", "Green"] }, // lime-500
+            "Teal":   { zh: "藍綠色", css: "rgb(20, 184, 166)", recipe: ["Blue", "Green"] }, // teal-500
+            "Indigo": { zh: "靛藍色", css: "rgb(79, 70, 229)", recipe: ["Blue", "Purple"] }, // indigo-600
+            "Magenta":{ zh: "洋紅色", css: "rgb(219, 39, 119)", recipe: ["Red", "Purple"] }, // pink-600
+            "Peach":  { zh: "桃色", css: "rgb(253, 186, 116)", recipe: ["Orange", "White"] }, // orange-300
+            "Mint":   { zh: "薄荷綠", css: "rgb(110, 231, 183)", recipe: ["Green", "White"] }, // green-300
+            "Lavender":{ zh: "薰衣草紫", css: "rgb(196, 181, 253)", recipe: ["Purple", "White"] }, // violet-300
+            "Brown":  { zh: "棕色", css: "rgb(120, 53, 15)", recipe: ["Orange", "Black"] } // orange-900
+        };
+
+        // 調色盤上的顏色名稱
+        const paletteColorNames = ["Red", "Yellow", "Blue", "White", "Black", "Orange", "Green", "Purple"];
+        
+        // 關卡的目標顏色名稱 (所有非調色盤上的顏色)
+        const targetColorNames = Object.keys(allColorsData).filter(name => 
+            allColorsData[name].recipe !== null && !paletteColorNames.includes(name)
+        );
+        // (修正：Orange, Green, Purple 也在調色盤上，但也需要被混合出來)
+        const targetColorNames_final = Object.keys(allColorsData).filter(name => 
+            allColorsData[name].recipe !== null
+        ); // 總共 17+3 = 20 個目標色 (17個獨特的 + 3個在調色盤上的)
+        
+        // 建立混色配方表
+        const mixRecipes = {};
+        Object.keys(allColorsData).forEach(name => {
+            const color = allColorsData[name];
+            if (color.recipe) {
+                const key = color.recipe.slice().sort().join('-'); // e.g., "Red-Yellow"
+                mixRecipes[key] = name; // e.g., "Orange"
+            }
+        });
+
+
+        // --- 2. 取得 DOM 元素 ---
+        const gameContainer = document.getElementById('game-container');
+        const targetNameEl = document.getElementById('target-name');
+        const targetColorEl = document.getElementById('target-color');
+        const mixSlot1El = document.getElementById('mix-slot-1');
+        const mixSlot2El = document.getElementById('mix-slot-2');
+        const mixedColorEl = document.getElementById('mixed-color');
+        const paletteContainer = document.getElementById('palette-container');
+        const colorGridEl = document.getElementById('color-grid'); 
+        
+        // (修改) 刪除按鈕元素
+        const feedbackEl = document.getElementById('feedback');
+
+        // --- 3. 遊戲狀態 ---
+        let currentTargetName = null; // e.g., "Orange"
+        let currentTargetData = null; // e.g., { zh: "橘色", ... }
+        let selectedColor1 = null;
+        let selectedColor2 = null;
+        let isChecking = false; // (新增) 狀態鎖，防止重複觸發
+        // 儲存已完成的顏色
+        let completedColors = new Set(paletteColorNames); // 調色盤顏色預設為完成
+
+        // --- 4. 核心功能函式 ---
+
+        /** (新增) 唸出英文 */
+        function speak(text) {
+            // (新增) 如果沒有文字，就不發音
+            if (!text) return;
+
+            // 停止任何正在播放的語音
+            window.speechSynthesis.cancel();
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US'; // 確保使用英文發音
+            utterance.rate = 0.8; // (修改) 稍微放慢語速
+            window.speechSynthesis.speak(utterance);
+        }
+
+        /** 產生調色盤按鈕 */
+        function createPalette() {
+            paletteContainer.innerHTML = ''; // 清空
+            for (const name of paletteColorNames) {
+                const color = allColorsData[name];
+                const btn = document.createElement('button');
+                btn.className = 'palette-btn';
+                btn.style.backgroundColor = color.css;
+                btn.dataset.colorName = name; // 儲存顏色名稱
+                btn.setAttribute('aria-label', `${color.zh} (${name})`); // 輔助功能
+
+                if (color.border) {
+                    btn.classList.add('border-gray-light');
+                }
+                
+                btn.addEventListener('click', () => handlePaletteClick(name));
+                // (新增) 滑鼠移入時唸出顏色
+                btn.addEventListener('mouseenter', () => speak(name));
+                paletteContainer.appendChild(btn);
+            }
+        }
+
+        /** 產生顏色表格 */
+        function createColorGrid() {
+            colorGridEl.innerHTML = '';
+            for (const name in allColorsData) {
+                const color = allColorsData[name];
+                
+                const item = document.createElement('div');
+                item.id = `grid-color-${name}`;
+                item.className = 'grid-color-item';
+                item.style.backgroundColor = color.css;
+                item.title = `${name} (${color.zh})`;
+
+                const check = document.createElement('span');
+                check.className = 'checkmark';
+                check.textContent = '✓';
+                item.appendChild(check);
+
+                if (completedColors.has(name)) {
+                    item.classList.add('completed');
+                }
+                
+                colorGridEl.appendChild(item);
+            }
+        }
+
+        /** 標記顏色為已完成 */
+        function markColorAsCompleted(colorName) {
+            completedColors.add(colorName);
+            const el = document.getElementById(`grid-color-${colorName}`);
+            if (el) {
+                el.classList.add('completed');
+            }
+        }
+        
+        /** 處理調色盤點擊 (修改) */
+        function handlePaletteClick(colorName) {
+            // 如果正在檢查答案（例如：答錯等待重置時），不允許點擊
+            if (isChecking) return;
+            
+            // 檢查是否已經選滿
+            if (selectedColor1 && selectedColor2) {
+                return;
+            }
+
+            speak(colorName); // (新增) 點擊時唸出顏色
+            
+            const color = allColorsData[colorName];
+
+            if (!selectedColor1) {
+                selectedColor1 = colorName;
+                mixSlot1El.style.backgroundColor = color.css;
+                mixSlot1El.textContent = '';
+                mixSlot1El.onmouseenter = () => speak(selectedColor1); // (新增)
+            } else if (!selectedColor2) {
+                selectedColor2 = colorName;
+                mixSlot2El.style.backgroundColor = color.css;
+                mixSlot2El.textContent = '';
+                mixSlot2El.onmouseenter = () => speak(selectedColor2); // (新增)
+                
+                showMixedColor();
+                checkGuess(); // (修改) 選完第二個顏色立刻檢查
+            }
+            
+            updatePaletteButtons();
+        }
+
+        /** 更新調色盤按鈕的選中狀態 */
+        function updatePaletteButtons() {
+            const buttons = paletteContainer.querySelectorAll('.palette-btn');
+            buttons.forEach(btn => {
+                const name = btn.dataset.colorName;
+                if (name === selectedColor1 || name === selectedColor2) {
+                    btn.classList.add('selected');
+                } else {
+                    btn.classList.remove('selected');
+                }
+            });
+        }
+
+        /** 顯示混合結果 */
+        function showMixedColor() {
+            if (!selectedColor1 || !selectedColor2) return;
+
+            const key = [selectedColor1, selectedColor2].slice().sort().join('-');
+            const resultName = mixRecipes[key];
+
+            if (resultName) {
+                const resultColor = allColorsData[resultName];
+                mixedColorEl.style.backgroundColor = resultColor.css;
+                mixedColorEl.textContent = '';
+                speak(resultName); // (修改) 立即唸出混合結果
+                mixedColorEl.onmouseenter = () => speak(resultName); // (新增)
+            } else {
+                mixedColorEl.style.backgroundColor = '#eee';
+                mixedColorEl.textContent = '?';
+                mixedColorEl.onmouseenter = null; // (新增)
+            }
+        }
+
+        /** 清除混合區 */
+        function resetMix() {
+            selectedColor1 = null;
+            selectedColor2 = null;
+            
+            mixSlot1El.style.backgroundColor = '#eee';
+            mixSlot1El.textContent = '顏色1';
+            mixSlot1El.onmouseenter = null; // (新增)
+            mixSlot2El.style.backgroundColor = '#eee';
+            mixSlot2El.textContent = '顏色2';
+            mixSlot2El.onmouseenter = null; // (新增)
+            mixedColorEl.style.backgroundColor = '#eee';
+            mixedColorEl.textContent = '結果';
+            mixedColorEl.onmouseenter = null; // (新增)
+            
+            feedbackEl.textContent = '';
+            feedbackEl.className = 'text-center text-lg font-medium mt-6 h-8';
+            
+            updatePaletteButtons();
+        }
+
+        /** 載入新關卡 (修改) */
+        function loadNewLevel() {
+            // (修改) 從 targetColorNames_final 隨機選一個
+            const randomIndex = Math.floor(Math.random() * targetColorNames_final.length);
+            currentTargetName = targetColorNames_final[randomIndex];
+            currentTargetData = allColorsData[currentTargetName];
+            
+            // 更新目標名稱 (英文 + 中文)
+            targetNameEl.textContent = `${currentTargetName} (${currentTargetData.zh})`;
+            // 更新目標顏色
+            targetColorEl.style.backgroundColor = currentTargetData.css;
+            // (新增) 滑鼠移入目標顏色時發音
+            targetColorEl.onmouseenter = () => speak(currentTargetName);
+
+            speak(currentTargetName); // (新增) 唸出新目標的英文
+            
+            resetMix();
+        }
+
+        /** 檢查答案 (大幅修改) */
+        function checkGuess() {
+            // 進入檢查狀態
+            isChecking = true; 
+
+            const userRecipeKey = [selectedColor1, selectedColor2].slice().sort().join('-');
+            const targetRecipeKey = currentTargetData.recipe.slice().sort().join('-');
+
+            if (userRecipeKey === targetRecipeKey) {
+                // --- 答對了 ---
+                feedbackEl.textContent = `答對了！${selectedColor1} + ${selectedColor2} = ${currentTargetName}`;
+                feedbackEl.className = 'text-center text-lg font-medium mt-6 h-8 text-green-600';
+                
+                // speak(`Correct!`); // (修改) 移除
+
+                // 標記為已完成
+                markColorAsCompleted(currentTargetName);
+                
+                // 1.5 秒後自動跳到下一題
+                setTimeout(() => {
+                    loadNewLevel();
+                    isChecking = false; // 載入新關卡後解除鎖定
+                }, 1500);
+
+            } else {
+                // --- 答錯了 ---
+                feedbackEl.textContent = '不對喔，再試試看。 (Not quite, try again!)';
+                feedbackEl.className = 'text-center text-lg font-medium mt-6 h-8 text-red-600';
+                
+                // speak(`Try again.`); // (修改) 移除
+
+                // 觸發抖動
+                gameContainer.classList.add('shake-animation');
+                
+                // 500ms 後移除動畫 class
+                setTimeout(() => {
+                    gameContainer.classList.remove('shake-animation');
+                }, 500);
+
+                // (新增) 1.5秒後自動清除，讓學生再試一次
+                setTimeout(() => {
+                    resetMix();
+                    isChecking = false; // 重設後解除鎖定
+                }, 1500);
+            }
+        }
+
+        // --- 5. 綁定事件 ---
+        // (修改) 刪除所有按鈕事件綁定
+
+        // --- 6. 遊戲初始化 ---
+        createPalette();
+        createColorGrid(); // 建立表格
+        loadNewLevel();
+
+    </script>
+</body>
+</html>
+
+
+
+
